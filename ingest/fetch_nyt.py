@@ -3,31 +3,35 @@ import requests
 import json
 from dotenv import load_dotenv
 
+# Load the API key from your .env file
 load_dotenv()
-
 API_KEY = os.getenv("NYT_API_KEY")
-SEARCH_URL = "https://api.nytimes.com/svc/search/v2/articlesearch.json"
 
-def fetch_politics_articles():
+def fetch_nyt_politics():
+    url = "https://api.nytimes.com/svc/search/v2/articlesearch.json"
+    
+    # We are searching for articles in the 'Politics' section
     params = {
-        "q": "politics",
         "fq": 'section_name:"Politics"',
         "api-key": API_KEY,
         "sort": "newest"
     }
     
-    response = requests.get(SEARCH_URL, params=params)
+    print("Fetching data from NYT...")
+    response = requests.get(url, params=params)
     
     if response.status_code == 200:
         data = response.json()
-        # Ensure the data/raw directory exists
-        os.makedirs("data/raw", exist_ok=True)
+        # Save to your existing data/raw folder
+        file_path = os.path.join("data", "raw", "nyt_articles.json")
         
-        with open("data/raw/latest_articles.json", "w") as f:
+        with open(file_path, "w") as f:
             json.dump(data, f, indent=2)
-        print("✅ Raw articles saved to data/raw/latest_articles.json")
+            
+        print(f"✅ Success! Raw data saved to {file_path}")
     else:
-        print(f"❌ Error: {response.status_code}")
+        print(f"❌ Failed: {response.status_code}")
+        print(response.text)
 
 if __name__ == "__main__":
-    fetch_politics_articles()
+    fetch_nyt_politics()
