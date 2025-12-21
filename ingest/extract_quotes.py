@@ -3,50 +3,43 @@ import os
 import re
 
 def extract_quotes():
-    raw_file = "data/raw/nyt_articles.json"
+    raw_path = "data/raw/nyt_articles.json"
     
-    if not os.path.exists(raw_file):
-        print("❌ Error: 'data/raw/nyt_articles.json' not found. Run fetch_nyt.py first!")
+    if not os.path.exists(raw_path):
+        print("❌ No raw file found.")
         return
 
-    with open(raw_file, "r") as f:
-        try:
-            data = json.load(f)
-        except json.JSONDecodeError:
-            print("❌ Error: The raw data file is empty or corrupted.")
-            return
+    with open(raw_path, "r") as f:
+        data = json.load(f)
 
-    # THE FIX: This line ensures if 'response' or 'docs' is missing, it uses an empty list []
     articles = data.get("response", {}).get("docs") or []
-
-    if not articles:
-        print("⚠️ The file exists, but there are no articles inside. The NYT search returned 0 results.")
-        return
     
-    found_count = 0
+    # We will store everything here
+    all_extracted = []
+
     for art in articles:
-        # Use .get() and an empty string default to prevent crashes on missing text
-        text = art.get("lead_paragraph") or ""
-        matches = re.findall(r'\"(.+?)\"\s*(?:said|stated|told)\s+([A-Z][a-z]+\s[A-Z][a-z]+)', text)
+        # Check BOTH the lead paragraph and the abstract for more data
+        text = (art.get("lead_paragraph") or "") + " " + (art.get("abstract") or "")
         
-        for quote, speaker in matches:
-            speaker_slug = speaker.lower().replace(" ", "-")
-            output_path = os.path.join("data", "quotes", f"{speaker_slug}.json")
-            
-            new_quote = {"text": quote, "source": "NYT", "url": art.get("web_url")}
+        # This regex finds ANYTHING between double quotes
+        # It looks for "Anything"
+        matches = re.findall(r'\"([^\"]+)\"', text)
+        
+        for quote in matches:
+            if len(quote) > 15:  # Ignore tiny fragments like "the" or "yes"
+                all_extracted.append({
+                    "quote": quote,
+                    "source": art.get("source"),
+                    "url": art.get("web_url")
+                })
 
-            if os.path.exists(output_path):
-                with open(output_path, "r") as f:
-                    content = json.load(f)
-            else:
-                content = {"person": speaker, "quotes": []}
-
-            content["quotes"].append(new_quote)
-            with open(output_path, "w") as f:
-                json.dump(content, f, indent=2)
-            found_count += 1
-
-    print(f"✅ Success! Extracted {found_count} quotes.")
+    if all_extracted:
+        output_path = "data/quotes/extracted_dump.json"
+        with open(output_path, "w") as f:
+            json.dump(all_extracted, f, indent=2)
+        print(f"✅ SUCCESS! Found {len(all_extracted)} quotes. Check data/quotes/extracted_dump.json")
+    else:
+        print("⚠️ Still nothing. This means the articles fetched literally don't have quote marks in the first paragraph.")
 
 if __name__ == "__main__":
     extract_quotes()
