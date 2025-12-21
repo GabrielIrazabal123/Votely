@@ -1,69 +1,46 @@
-import json
-import os
-import re
-import requests
-import time
+import json, os, re, requests, time, random
 from bs4 import BeautifulSoup
 
-def extract_quotes():
+def extract_with_stealth():
     raw_path = "data/raw/nyt_articles.json"
     output_path = "data/quotes/full_quotes_dump.json"
     
-    if not os.path.exists(raw_path):
-        print("❌ No articles found. Run fetch_nyt.py first!")
-        return
-
     with open(raw_path, "r") as f:
         articles = json.load(f).get("response", {}).get("docs", [])
 
     all_found = []
-    print(f"🔎 Scanning {len(articles)} articles for quotes...")
+    # Disguise as Google's Crawler
+    headers = {'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'}
 
     for i, art in enumerate(articles):
         url = art.get("web_url")
-        print(f"[{i+1}/{len(articles)}] Visiting: {url}")
+        print(f"[{i+1}/{len(articles)}] Attempting: {url[:50]}...")
         
         try:
-            # Enhanced Headers to bypass simple bot detection
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-            }
-            
-            res = requests.get(url, headers=headers, timeout=10)
+            res = requests.get(url, headers=headers, timeout=15)
             if res.status_code == 200:
                 soup = BeautifulSoup(res.text, 'html.parser')
-                
-                # We specifically look for tags that NYT uses for article body
-                # 'section' and 'p' covers the majority of their layout
+                # NYT often hides text in <section name="articleBody">
                 paragraphs = soup.find_all('p')
-                text = " ".join([p.get_text() for p in paragraphs])
+                full_text = " ".join([p.get_text() for p in paragraphs])
                 
-                print(f"   ∟ Found {len(text)} characters.")
+                print(f"   ∟ Found {len(full_text)} characters.")
 
-                # REGEX: Matches "..." OR “...” OR ‘...’
-                # Catches quotes between 15 and 300 characters long
-                quotes = re.findall(r'[“\"‘](.{15,300}?[”\"’])', text)
-                
-                for q in quotes:
-                    all_found.append({
-                        "quote": q[:-1].strip(), # Strip the closing quote mark
-                        "title": art.get("headline", {}).get("main"),
-                        "url": url
-                    })
-            else:
-                print(f"   ∟ Blocked! (Status: {res.status_code})")
+                # If we only find 100-200 chars, it's just the 'Subscribe' message
+                if len(full_text) > 500:
+                    quotes = re.findall(r'[“\"‘](.{15,400}?[”\"’])', text)
+                    for q in quotes:
+                        all_found.append({"quote": q[:-1], "url": url, "title": art.get("headline", {}).get("main")})
             
-            time.sleep(1) # Be nice to the servers
+            # Random wait between 2-5 seconds to look human
+            time.sleep(random.uniform(2, 5))
             
         except Exception as e:
-            print(f"   ∟ Error reading page: {e}")
+            print(f"   ∟ Connection error: {e}")
 
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(all_found, f, indent=2)
-    
-    print(f"\n✅ COMPLETE! Extracted {len(all_found)} total quotes.")
+    print(f"\n✅ Total quotes captured: {len(all_found)}")
 
 if __name__ == "__main__":
-    extract_quotes()
+    extract_with_stealth()
