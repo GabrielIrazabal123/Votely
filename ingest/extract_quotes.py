@@ -16,16 +16,17 @@ def extract_quotes():
             print("❌ Error: The raw data file is empty or corrupted.")
             return
 
-    # SAFETY CHECK: Get articles, but default to an empty list [] instead of None
-    articles = data.get("response", {}).get("docs", [])
+    # THE FIX: This line ensures if 'response' or 'docs' is missing, it uses an empty list []
+    articles = data.get("response", {}).get("docs") or []
 
     if not articles:
-        print("⚠️ No articles found in the raw data. Try running the fetcher again.")
+        print("⚠️ The file exists, but there are no articles inside. The NYT search returned 0 results.")
         return
     
     found_count = 0
     for art in articles:
-        text = art.get("lead_paragraph", "") or ""
+        # Use .get() and an empty string default to prevent crashes on missing text
+        text = art.get("lead_paragraph") or ""
         matches = re.findall(r'\"(.+?)\"\s*(?:said|stated|told)\s+([A-Z][a-z]+\s[A-Z][a-z]+)', text)
         
         for quote, speaker in matches:
@@ -45,7 +46,7 @@ def extract_quotes():
                 json.dump(content, f, indent=2)
             found_count += 1
 
-    print(f"✅ Done! Extracted {found_count} quotes.")
+    print(f"✅ Success! Extracted {found_count} quotes.")
 
 if __name__ == "__main__":
     extract_quotes()
