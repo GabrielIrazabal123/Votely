@@ -1,7 +1,13 @@
-import json, os, re
+import json, os, spacy
+from fastcoref import FCoref
 from bs4 import BeautifulSoup
 
-def extract_quotes():
+# 1. Load the AI Models
+print("🧠 Loading AI Models (this may take a minute)...")
+nlp = spacy.load("en_core_web_trf")  # High-accuracy transformer
+coref_model = FCoref()               # Coreference engine
+
+def extract_quotes_ai():
     raw_path = "data/raw/all_articles.json"
     output_path = "data/quotes/final_database.json"
     
@@ -9,54 +15,46 @@ def extract_quotes():
         articles = json.load(f)
 
     all_found_quotes = []
-    
-    # STYLE 1: "Quote" said Name.
-    pattern_a = r'[“\"‘](.{30,500}?)[”\"’]\s*(?:said|told|warned|added|replied)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
-    
-    # STYLE 2: Name said: "Quote"
-    pattern_b = r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|told|warned|stated):\s*[“\"‘](.{30,500}?)[”\"’]'
-
-    # STYLE 3: "Quote," Name said, "Quote continue." (Interrupted Quote)
-    pattern_c = r'[“\"‘](.{10,500}?)[”\"’],\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|added|continued),\s*[“\"‘](.{10,500}?)[”\"’]'
 
     for art in articles:
+        # Step A: Clean HTML and prepare text
         text = BeautifulSoup(art.get('content', ''), "html.parser").get_text()
         
-        # --- Run Style 1 ---
-        for m in re.finditer(pattern_a, text, flags=re.DOTALL):
-            save_quote(all_found_quotes, m.group(2), m.group(1), art)
-            
-        # --- Run Style 2 ---
-        for m in re.finditer(pattern_b, text, flags=re.DOTALL):
-            save_quote(all_found_quotes, m.group(1), m.group(2), art)
+        # Step B: AI Coreference Resolution
+        # This replaces "He" with "Trump" throughout the text
+        preds = coref_model.predict(texts=[text])
+        resolved_text = preds[0].get_resolved_content()
+        
+        # Step C: Use spaCy to "read" the sentences
+        doc = nlp(resolved_text)
+        
+        # Step D: Extract Speaker + Quote
+        # We look for verbs of 'speech' (said, told, warned)
+        for sent in doc.sents:
+            for token in sent:
+                if token.lemma_ in ["say", "tell", "warn", "add", "state"]:
+                    # Look for the subject (the speaker) and the object (the quote)
+                    speaker = [w for w in token.children if w.dep_ == "nsubj"]
+                    if speaker:
+                        speaker_name = speaker[0].text
+                        
+                        # Only keep if the speaker is a recognized PERSON entity
+                        if any(ent.text == speaker_name and ent.label_ == "PERSON" for ent in doc.ents):
+                            # Find text in quotes within this sentence
+                            quote_match = re.search(r'[“\"‘](.{10,500}?)[”\"’]', sent.text)
+                            if quote_match:
+                                all_found_quotes.append({
+                                    "politician": speaker_name,
+                                    "quote": quote_match.group(1).strip(),
+                                    "url": art.get("url")
+                                })
 
-        # --- Run Style 3 (The Interrupted Quote) ---
-        for m in re.finditer(pattern_c, text, flags=re.DOTALL):
-            combined_quote = f"{m.group(1)}... {m.group(3)}"
-            save_quote(all_found_quotes, m.group(2), combined_quote, art)
-
-    # REMOVE DUPLICATES & PROTECT AGAINST "THE" AS A NAME
-    unique_quotes = {}
-    blacklist = ["The", "But", "And", "According", "In", "On", "If", "However"]
-    
-    for q in all_found_quotes:
-        if q['politician'] not in blacklist and q['quote'] not in unique_quotes:
-            unique_quotes[q['quote']] = q
-
-    os.makedirs("data/quotes", exist_ok=True)
+    # Save unique results
+    unique_quotes = {q['quote']: q for q in all_found_quotes}.values()
     with open(output_path, "w") as f:
-        json.dump(list(unique_quotes.values()), f, indent=2)
+        json.dump(list(unique_quotes), f, indent=2)
     
-    print(f"🎯 MASTER EXTRACTION COMPLETE: Found {len(unique_quotes)} verified quotes.")
-
-def save_quote(collection, name, text, art):
-    clean_text = " ".join(text.split())
-    collection.append({
-        "politician": name.strip(),
-        "quote": clean_text,
-        "source": "The Guardian",
-        "url": art.get("url")
-    })
+    print(f"💎 AI SUCCESS: Found {len(unique_quotes)} high-precision quotes.")
 
 if __name__ == "__main__":
-    extract_quotes()
+    extract_quotes_ai()
