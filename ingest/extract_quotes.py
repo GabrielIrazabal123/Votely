@@ -1,4 +1,4 @@
-import json, os, spacy
+import json, os, spacy, re
 from fastcoref import FCoref
 from bs4 import BeautifulSoup
 
