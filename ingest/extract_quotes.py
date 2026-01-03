@@ -23,7 +23,7 @@ def extract_quotes_ai():
         # Step B: AI Coreference Resolution
         # This replaces "He" with "Trump" throughout the text
         preds = coref_model.predict(texts=[text])
-        resolved_text = preds[0].get_resolved_content()
+        resolved_text = preds[0].text
         
         # Step C: Use spaCy to "read" the sentences
         doc = nlp(resolved_text)
