@@ -10,45 +10,53 @@ def extract_quotes():
 
     all_found_quotes = []
     
-    # THE PRO REGEX:
-    # 1. Finds the quote
-    # 2. Finds the verb (said/told/etc)
-    # 3. Finds a Capitalized Name (e.g., Donald Trump or Harris)
-    # Pattern: "Quote" + optional space + verb + optional space + Name
-    pro_pattern = r'[“\"‘](.{30,500}?)[”\"’]\s*(?:said|told|warned|argued|stated|added|replied)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
+    # STYLE 1: "Quote" said Name.
+    pattern_a = r'[“\"‘](.{30,500}?)[”\"’]\s*(?:said|told|warned|added|replied)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
+    
+    # STYLE 2: Name said: "Quote"
+    pattern_b = r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|told|warned|stated):\s*[“\"‘](.{30,500}?)[”\"’]'
 
-    print(f"🚀 Running Pro-Level Extraction on {len(articles)} articles...")
+    # STYLE 3: "Quote," Name said, "Quote continue." (Interrupted Quote)
+    pattern_c = r'[“\"‘](.{10,500}?)[”\"’],\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)\s+(?:said|added|continued),\s*[“\"‘](.{10,500}?)[”\"’]'
 
     for art in articles:
-        soup = BeautifulSoup(art.get('content', ''), "html.parser")
-        text = soup.get_text()
+        text = BeautifulSoup(art.get('content', ''), "html.parser").get_text()
         
-        # We use finditer for precision
-        for match in re.finditer(pro_pattern, text, flags=re.DOTALL):
-            quote_text = match.group(1).strip()
-            speaker_name = match.group(2).strip() # This captures the actual name!
+        # --- Run Style 1 ---
+        for m in re.finditer(pattern_a, text, flags=re.DOTALL):
+            save_quote(all_found_quotes, m.group(2), m.group(1), art)
             
-            # Cleaning
-            clean_quote = " ".join(quote_text.split())
-            
-            # VALIDATION: Ignore common "non-person" names
-            ignore_list = ["The", "But", "And", "According", "In", "On", "If"]
-            if speaker_name in ignore_list:
-                continue
+        # --- Run Style 2 ---
+        for m in re.finditer(pattern_b, text, flags=re.DOTALL):
+            save_quote(all_found_quotes, m.group(1), m.group(2), art)
 
-            all_found_quotes.append({
-                "politician": speaker_name,
-                "quote": clean_quote,
-                "source": art.get("source"),
-                "date": art.get("date"), # If you added date to fetcher
-                "url": art.get("url")
-            })
+        # --- Run Style 3 (The Interrupted Quote) ---
+        for m in re.finditer(pattern_c, text, flags=re.DOTALL):
+            combined_quote = f"{m.group(1)}... {m.group(3)}"
+            save_quote(all_found_quotes, m.group(2), combined_quote, art)
+
+    # REMOVE DUPLICATES & PROTECT AGAINST "THE" AS A NAME
+    unique_quotes = {}
+    blacklist = ["The", "But", "And", "According", "In", "On", "If", "However"]
+    
+    for q in all_found_quotes:
+        if q['politician'] not in blacklist and q['quote'] not in unique_quotes:
+            unique_quotes[q['quote']] = q
 
     os.makedirs("data/quotes", exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump(all_found_quotes, f, indent=2)
+        json.dump(list(unique_quotes.values()), f, indent=2)
     
-    print(f"💎 BEST-IN-CLASS SUCCESS: Found {len(all_found_quotes)} verified political quotes.")
+    print(f"🎯 MASTER EXTRACTION COMPLETE: Found {len(unique_quotes)} verified quotes.")
+
+def save_quote(collection, name, text, art):
+    clean_text = " ".join(text.split())
+    collection.append({
+        "politician": name.strip(),
+        "quote": clean_text,
+        "source": "The Guardian",
+        "url": art.get("url")
+    })
 
 if __name__ == "__main__":
     extract_quotes()
