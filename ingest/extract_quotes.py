@@ -1,36 +1,50 @@
 import json, os, re
+from bs4 import BeautifulSoup
 
-def extract_specific_quotes():
+def extract_quotes():
     raw_path = "data/raw/all_articles.json"
     output_path = "data/quotes/final_database.json"
     
     if not os.path.exists(raw_path):
+        print("❌ Error: Run fetch_all.py first!")
         return
 
     with open(raw_path, "r") as f:
         articles = json.load(f)
 
-    results = []
-    # This regex looks for: "Quote" said/told/added [Name]
-    # It requires the quote to be at least 40 chars to avoid vague soundbites
-    quote_pattern = r'[“\"‘](.{40,500}?[”\"’])\s*(?:said|told|added|stated|argued)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
+    all_found_quotes = []
+    
+    # We use a non-capturing group (?:) for the quotes themselves 
+    # to avoid the 'findall' group trap.
+    pattern = r'[“\"‘](.{30,500}?)[”\"’]'
+
+    print(f"🔎 Processing {len(articles)} articles...")
 
     for art in articles:
-        text = art.get("content")
-        if not text: continue
+        # Step 1: Clean HTML
+        soup = BeautifulSoup(art.get('content', ''), "html.parser")
+        text = soup.get_text()
         
-        found = re.findall(quote_pattern, text)
-        for quote_text, speaker in found:
-            results.append({
-                "politician": speaker,
-                "quote": quote_text.strip(),
+        # Step 2: Use finditer to ensure we catch EVERY match individually
+        # flags=re.DOTALL allows matches to span across newlines
+        for match in re.finditer(pattern, text, flags=re.DOTALL):
+            quote_text = match.group(1).strip()
+            
+            # Clean up nested junk/newlines
+            clean_quote = " ".join(quote_text.split())
+            
+            all_found_quotes.append({
+                "quote": clean_quote,
                 "source": art.get("source"),
                 "url": art.get("url")
             })
 
+    # Save ONLY after the loops are finished
+    os.makedirs("data/quotes", exist_ok=True)
     with open(output_path, "w") as f:
-        json.dump(results, f, indent=2)
-    print(f"🎯 Captured {len(results)} high-quality political quotes.")
+        json.dump(all_found_quotes, f, indent=2)
+    
+    print(f"🎯 SUCCESS: Found {len(all_found_quotes)} total quotes.")
 
 if __name__ == "__main__":
-    extract_specific_quotes()
+    extract_quotes()
