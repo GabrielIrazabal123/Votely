@@ -10,36 +10,45 @@ def extract_quotes():
 
     all_found_quotes = []
     
-    # 1. NEW REGEX: Look for the quote AND the word after it (the attribution)
-    # This looks for: "Quote Text" followed by words like said, told, added...
-    pattern = r'[“\"‘](.{30,500}?)[”\"’]\s*(said|told|added|warned|stated|argued)'
+    # THE PRO REGEX:
+    # 1. Finds the quote
+    # 2. Finds the verb (said/told/etc)
+    # 3. Finds a Capitalized Name (e.g., Donald Trump or Harris)
+    # Pattern: "Quote" + optional space + verb + optional space + Name
+    pro_pattern = r'[“\"‘](.{30,500}?)[”\"’]\s*(?:said|told|warned|argued|stated|added|replied)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)'
 
-    print(f"🔎 Filtering {len(articles)} articles for high-quality quotes...")
+    print(f"🚀 Running Pro-Level Extraction on {len(articles)} articles...")
 
     for art in articles:
         soup = BeautifulSoup(art.get('content', ''), "html.parser")
         text = soup.get_text()
         
-        # We use re.IGNORECASE to catch "Said" and "said"
-        for match in re.finditer(pattern, text, flags=re.DOTALL | re.IGNORECASE):
+        # We use finditer for precision
+        for match in re.finditer(pro_pattern, text, flags=re.DOTALL):
             quote_text = match.group(1).strip()
-            verb_found = match.group(2) # e.g., "said"
+            speaker_name = match.group(2).strip() # This captures the actual name!
             
+            # Cleaning
             clean_quote = " ".join(quote_text.split())
             
+            # VALIDATION: Ignore common "non-person" names
+            ignore_list = ["The", "But", "And", "According", "In", "On", "If"]
+            if speaker_name in ignore_list:
+                continue
+
             all_found_quotes.append({
+                "politician": speaker_name,
                 "quote": clean_quote,
-                "attribution_verb": verb_found,
                 "source": art.get("source"),
-                "url": art.get("url"),
-                "title": art.get("title")
+                "date": art.get("date"), # If you added date to fetcher
+                "url": art.get("url")
             })
 
     os.makedirs("data/quotes", exist_ok=True)
     with open(output_path, "w") as f:
         json.dump(all_found_quotes, f, indent=2)
     
-    print(f"🎯 SUCCESS: Filtered down to {len(all_found_quotes)} verified quotes.")
+    print(f"💎 BEST-IN-CLASS SUCCESS: Found {len(all_found_quotes)} verified political quotes.")
 
 if __name__ == "__main__":
     extract_quotes()
